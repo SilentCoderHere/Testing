@@ -1,5 +1,5 @@
 {
-  "version": "1.0.18",
+  "version": "1.0.19",
   "ai_services": [
     [
       "ChatGPT",
@@ -160,6 +160,13 @@
       "https://testing.com/",
       "Category",
       "Description",
+      "FF009688"
+    ],
+    [
+      "faksjdf;",
+      "afadsfsdfadsaf",
+      "asdf",
+      "asdfasfd",
       "FF009688"
     ]
   ]
