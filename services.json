@@ -1,5 +1,5 @@
 {
-  "version": "1.0.16",
+  "version": "1.0.17",
   "ai_services": [
     [
       "ChatGPT",
@@ -154,6 +154,13 @@
       "Productivity",
       "Productivity AI assistant",
       "FFCDDC39"
+    ],
+    [
+      "Testing",
+      "https://testing.com/",
+      "Category",
+      "Description",
+      "FF009688"
     ]
   ]
 }
