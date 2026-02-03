@@ -1,5 +1,5 @@
 {
-  "version": "1.0.22",
+  "version": "1.0.23",
   "ai_services": [
     [
       "ChatGPT",
@@ -154,34 +154,6 @@
       "Productivity",
       "Productivity AI assistant",
       "FFCDDC39"
-    ],
-    [
-      "Testing 1",
-      "https://testing.com/",
-      "Category",
-      "Description",
-      "FF009688"
-    ],
-    [
-      "faksjdf;",
-      "afadsfsdfadsaf",
-      "asdf",
-      "asdfasfd",
-      "FF009688"
-    ],
-    [
-      "hfgfg",
-      "jghgbhmb",
-      "kjgfhdsgx",
-      "dgbfhcgvnm",
-      "FF009688"
-    ],
-    [
-      "ME",
-      "dfgs",
-      "gdsfgsdfgsdf",
-      "dfsgfgsdf",
-      "FF009688"
     ]
   ]
 }
