@@ -1,5 +1,5 @@
 {
-  "version": "1.0.29",
+  "version": "1.0.30",
   "ai_services": [
     [
       "ChatGPT",
@@ -150,6 +150,13 @@
     ],
     [
       "Consensus",
+      "https://consensus.app/",
+      "Productivity",
+      "Productivity AI assistant",
+      "FFCDDC39"
+    ],
+    [
+      "Consus",
       "https://consensus.app/",
       "Productivity",
       "Productivity AI assistant",
