@@ -1,5 +1,5 @@
 {
-  "version": "1.0.31",
+  "version": "1.0.32",
   "ai_services": [
     [
       "ChatGPT",
@@ -164,7 +164,7 @@
     ],
     [
       "Hello",
-      "https://hello.com/",
+      "https://github.com/",
       "fsadf",
       "sdfas",
       "FFCDDC39"
