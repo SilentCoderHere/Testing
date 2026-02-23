@@ -1,5 +1,5 @@
 {
-  "version": "1.0.6",
+  "version": "1.0.7",
   "service_domains": {
     "chatgpt": [
       "chatgpt.com",
@@ -100,7 +100,10 @@
       "consensus.app"
     ],
     "hello": [
-      "hello.com"
+      "githubassets.com",
+      "github.com",
+      "ctfassets.net",
+      "githubusercontent.com"
     ]
   },
   "always_blocked_domains": {
