@@ -1,23 +1,9 @@
-name: Extract Hosts Domains
+name: Extract Domains
 
 on:
   schedule:
     - cron: "0 0 * * *"
   workflow_dispatch:
-    inputs:
-      force_modified:
-        description: 'Force "modified" response? (yes/no)'
-        required: false
-        default: "no"
-        type: choice
-        options:
-          - "no"
-          - "yes"
-      test_branch:
-        description: "Branch to commit to (for testing)"
-        required: false
-        default: ""
-        type: string
 
 permissions:
   contents: write
@@ -28,66 +14,120 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.test_branch || github.ref_name }}
 
-      - name: Compute yesterday's midnight (or override for testing)
-        id: yesterday
+      - name: Set fetch mode
+        id: mode
         run: |
-          if [ "${{ github.event.inputs.force_modified }}" = "yes" ]; then
-            # Use an old date to force 200 response
-            FORCED_DATE="Mon, 01 Jan 2020 00:00:00 GMT"
-            echo "timestamp=$FORCED_DATE" >> $GITHUB_OUTPUT
-            echo "🔧 TEST MODE: Using forced date $FORCED_DATE (will always get 200)"
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "mode=conditional" >> $GITHUB_OUTPUT
+            echo "Fetch mode: conditional (use If-Modified-Since)"
           else
-            YESTERDAY_MIDNIGHT=$(date -d "yesterday 00:00:00" -u +"%a, %d %b %Y %H:%M:%S GMT")
-            echo "timestamp=$YESTERDAY_MIDNIGHT" >> $GITHUB_OUTPUT
-            echo "Checking for changes since: $YESTERDAY_MIDNIGHT"
+            echo "mode=force" >> $GITHUB_OUTPUT
+            echo "Fetch mode: force (always download latest)"
           fi
 
-      # ... rest of the steps remain exactly the same ...
-      - name: Conditional fetch of hosts file
-        id: fetch
+      - name: Compute yesterday's midnight (UTC)
+        if: steps.mode.outputs.mode == 'conditional'
+        id: yesterday
+        run: |
+          YESTERDAY_MIDNIGHT=$(date -d "yesterday 00:00:00" -u +"%a, %d %b %Y %H:%M:%S GMT")
+          echo "Checking for changes since: $YESTERDAY_MIDNIGHT"
+          echo "timestamp=$YESTERDAY_MIDNIGHT" >> $GITHUB_OUTPUT
+
+      - name: Fetch hosts file (conditional)
+        if: steps.mode.outputs.mode == 'conditional'
+        id: fetch_conditional
         run: |
           URL="https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
           LAST_CHECK="${{ steps.yesterday.outputs.timestamp }}"
 
+          echo "Sending conditional request with If-Modified-Since: $LAST_CHECK"
           STATUS=$(curl -o hosts.txt -s -w "%{http_code}" \
             -H "If-Modified-Since: $LAST_CHECK" "$URL")
 
+          echo "HTTP status: $STATUS"
           echo "status=$STATUS" >> $GITHUB_OUTPUT
+
           if [ "$STATUS" = "200" ]; then
-            echo "✅ File changed – downloading..."
+            echo "✅ File changed since yesterday midnight – downloaded."
           elif [ "$STATUS" = "304" ]; then
-            echo "⏭️ No changes – nothing to do."
+            echo "⏭️ No changes since yesterday midnight – skipping rest of workflow."
           else
             echo "⚠️ Unexpected HTTP status $STATUS"
           fi
 
-      - name: Extract blocked domains and create JSON
-        if: steps.fetch.outputs.status == '200'
+      - name: Fetch hosts file (force / manual)
+        if: steps.mode.outputs.mode == 'force'
+        id: fetch_force
         run: |
+          URL="https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+          echo "Manual run: downloading latest hosts file unconditionally..."
+          curl -s -o hosts.txt "$URL"
+          echo "status=200" >> $GITHUB_OUTPUT
+          echo "✅ File downloaded."
+
+      - name: Extract blocked domains and create temporary JSON
+        if: steps.fetch_conditional.outputs.status == '200' || steps.fetch_force.outputs.status == '200'
+        run: |
+          echo "Extracting domains from hosts file..."
           awk '/^0\.0\.0\.0/ {print $2}' hosts.txt | \
             grep -vE '^([0-9]{1,3}\.){3}[0-9]{1,3}$|^[a-fA-F0-9:]+$' | \
             sort -u | \
-            jq -R . | jq -s . > domains.json
-          COUNT=$(jq length domains.json)
-          echo "✅ Extracted $COUNT unique blocked domains"
+            jq -R . | jq -s . > domains_new.json
 
-      - name: Commit and push JSON file (if changed)
-        if: steps.fetch.outputs.status == '200'
+          COUNT=$(jq length domains_new.json)
+          echo "✅ Extracted $COUNT unique blocked domains (IP addresses excluded)"
+
+      - name: Compare and commit (for conditional fetch – only on 200)
+        if: steps.fetch_conditional.outputs.status == '200'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add domains.json
-          if git diff --cached --quiet; then
-            echo "📝 No changes in domain list – nothing to commit."
-          else
-            git commit -m "Test: Update domains from StevenBlack/hosts ($(date -u +'%Y-%m-%d')) [skip ci]"
+
+          if [ ! -f domains.json ]; then
+            mv domains_new.json domains.json
+            git add domains.json
+            git commit -m "Initial domains from StevenBlack/hosts ($(date -u +'%Y-%m-%d')) [skip ci]"
             git push
-            echo "🚀 Committed updated domains.json"
+            echo "🚀 Committed initial domains.json"
+          else
+            if cmp -s domains.json domains_new.json; then
+              echo "📝 No changes in domain list – nothing to commit."
+              rm domains_new.json
+            else
+              mv domains_new.json domains.json
+              git add domains.json
+              git commit -m "Update domains from StevenBlack/hosts ($(date -u +'%Y-%m-%d')) [skip ci]"
+              git push
+              echo "🚀 Committed updated domains.json"
+            fi
+          fi
+
+      - name: Compare and commit (for manual/force fetch)
+        if: steps.fetch_force.outputs.status == '200'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if [ ! -f domains.json ]; then
+            mv domains_new.json domains.json
+            git add domains.json
+            git commit -m "Initial domains from StevenBlack/hosts (manual run) [skip ci]"
+            git push
+            echo "🚀 Committed initial domains.json"
+          else
+            if cmp -s domains.json domains_new.json; then
+              echo "📝 No changes in domain list – nothing to commit."
+              rm domains_new.json
+            else
+              mv domains_new.json domains.json
+              git add domains.json
+              git commit -m "Update domains from StevenBlack/hosts (manual run) [skip ci]"
+              git push
+              echo "🚀 Committed updated domains.json"
+            fi
           fi
 
       - name: Clean up
         if: always()
-        run: rm -f hosts.txt
+        run: rm -f hosts.txt domains_new.json
