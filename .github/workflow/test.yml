@@ -1,0 +1,93 @@
+name: Extract Hosts Domains
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      force_modified:
+        description: 'Force "modified" response? (yes/no)'
+        required: false
+        default: "no"
+        type: choice
+        options:
+          - "no"
+          - "yes"
+      test_branch:
+        description: "Branch to commit to (for testing)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.test_branch || github.ref_name }}
+
+      - name: Compute yesterday's midnight (or override for testing)
+        id: yesterday
+        run: |
+          if [ "${{ github.event.inputs.force_modified }}" = "yes" ]; then
+            # Use an old date to force 200 response
+            FORCED_DATE="Mon, 01 Jan 2020 00:00:00 GMT"
+            echo "timestamp=$FORCED_DATE" >> $GITHUB_OUTPUT
+            echo "🔧 TEST MODE: Using forced date $FORCED_DATE (will always get 200)"
+          else
+            YESTERDAY_MIDNIGHT=$(date -d "yesterday 00:00:00" -u +"%a, %d %b %Y %H:%M:%S GMT")
+            echo "timestamp=$YESTERDAY_MIDNIGHT" >> $GITHUB_OUTPUT
+            echo "Checking for changes since: $YESTERDAY_MIDNIGHT"
+          fi
+
+      # ... rest of the steps remain exactly the same ...
+      - name: Conditional fetch of hosts file
+        id: fetch
+        run: |
+          URL="https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+          LAST_CHECK="${{ steps.yesterday.outputs.timestamp }}"
+
+          STATUS=$(curl -o hosts.txt -s -w "%{http_code}" \
+            -H "If-Modified-Since: $LAST_CHECK" "$URL")
+
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ File changed – downloading..."
+          elif [ "$STATUS" = "304" ]; then
+            echo "⏭️ No changes – nothing to do."
+          else
+            echo "⚠️ Unexpected HTTP status $STATUS"
+          fi
+
+      - name: Extract blocked domains and create JSON
+        if: steps.fetch.outputs.status == '200'
+        run: |
+          awk '/^0\.0\.0\.0/ {print $2}' hosts.txt | \
+            grep -vE '^([0-9]{1,3}\.){3}[0-9]{1,3}$|^[a-fA-F0-9:]+$' | \
+            sort -u | \
+            jq -R . | jq -s . > domains.json
+          COUNT=$(jq length domains.json)
+          echo "✅ Extracted $COUNT unique blocked domains"
+
+      - name: Commit and push JSON file (if changed)
+        if: steps.fetch.outputs.status == '200'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add domains.json
+          if git diff --cached --quiet; then
+            echo "📝 No changes in domain list – nothing to commit."
+          else
+            git commit -m "Test: Update domains from StevenBlack/hosts ($(date -u +'%Y-%m-%d')) [skip ci]"
+            git push
+            echo "🚀 Committed updated domains.json"
+          fi
+
+      - name: Clean up
+        if: always()
+        run: rm -f hosts.txt
